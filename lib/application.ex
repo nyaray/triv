@@ -27,10 +27,10 @@ defmodule TrivApp do
     :cowboy_router.compile([
       {:_,
        [
-         {"/", :cowboy_static, {:priv_file, :triv, "app/resources/public/index.html"}},
          {"/api", TrivRestHandler, []},
          {"/echo", TrivEchoHandler, []},
          {"/ws", TrivWsHandler, %{idle_timeout: 10000}},
+         {"/", :cowboy_static, {:priv_file, :triv, "app/resources/public/index.html"}},
          {"/[...]", :cowboy_static, {:priv_dir, :triv, "app/resources/public"}}
        ]}
     ])
