@@ -15,31 +15,22 @@ defmodule TrivApp do
         name: TrivPubSub,
         keys: :duplicate
       )
-      # %{id: TrivWsSup,
-      #  start: {TrivWsSup, :start_link, []},
-      #  type: :supervisor
-      # }
     ]
 
-    # See https://hexdocs.pm/elixir/Supervisor.html
-    # for other strategies and supported options
-    opts = [
+    Supervisor.start_link(children,
       strategy: :one_for_one,
       name: Triv.Supervisor
-    ]
-
-    Supervisor.start_link(children, opts)
+    )
   end
 
   defp dispatch() do
     :cowboy_router.compile([
       {:_,
        [
-         # {"/", :cowboy_static, {:priv_file, :triv, "index.html"}},
+         {"/", :cowboy_static, {:priv_file, :triv, "app/resources/public/index.html"}},
          {"/api", TrivRestHandler, []},
          {"/echo", TrivEchoHandler, []},
          {"/ws", TrivWsHandler, %{idle_timeout: 10000}},
-         # {"/static/[...]", :cowboy_static, {:priv_dir, :triv, "static"}}
          {"/[...]", :cowboy_static, {:priv_dir, :triv, "app/resources/public"}}
        ]}
     ])
