@@ -86,9 +86,9 @@
   [:div.center
    [:h3.question-marker "Q: " [:span.question @current-question]]
    [:h3.question-marker "A: " [:span.question @current-answer]]
-   (if-not (= @current-team nil) [:h1 "Team: " @current-team])
+   (if-not (= @current-team nil) [:h1 [:em "First: "] @current-team])
    (if-not (= @current-duds [])
-     [:h1 "Duds: " (map-indexed (fn [i d] [:div {:key i} d]) @current-duds)])])
+     [:h1 (comment "Duds: ") (map-indexed (fn [i d] [:div {:key i} d]) @current-duds)])])
 
 ;; Press play!
 
