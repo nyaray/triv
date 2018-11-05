@@ -20,6 +20,9 @@ use Mix.Config
 #
 #     config :logger, level: :info
 #
+config :triv,
+  static_root: "app/resources/public/"
+
 config :logger,
        :console,
        metadata: [:module]

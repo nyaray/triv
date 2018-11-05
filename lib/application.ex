@@ -1,6 +1,8 @@
 defmodule TrivApp do
   use Application
 
+  @static_root Application.get_env(:triv, :static_root)
+
   def start(_type, _args) do
     cowboy_opts = [
       :http,
@@ -30,8 +32,8 @@ defmodule TrivApp do
          {"/api", TrivRestHandler, []},
          {"/echo", TrivEchoHandler, []},
          {"/ws", TrivWsHandler, %{idle_timeout: 10000}},
-         {"/", :cowboy_static, {:priv_file, :triv, "app/resources/public/index.html"}},
-         {"/[...]", :cowboy_static, {:priv_dir, :triv, "app/resources/public"}}
+         {"/", :cowboy_static, {:priv_file, :triv, @static_root <> "index.html"}},
+         {"/[...]", :cowboy_static, {:priv_dir, :triv, @static_root}}
        ]}
     ])
   end

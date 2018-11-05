@@ -8,8 +8,9 @@ do
     echo "e - exit"
     echo "c - clear"
     echo "n - new question"
-    echo "a - test team foo"
-    echo "b - test team bar"
+    echo "1 - test team foo"
+    echo "2 - test team bar"
+    echo "3 - test team baz"
 
     read -r -p "Command: " cmd
 
@@ -19,8 +20,9 @@ do
         n) curl -s https://opentdb.com/api.php?amount=1 \
             | jq -c -M .results[0] \
             | curl -s -X POST localhost:8080/api -d @- ;;
-        a) curl -s localhost:8080/api -d '{"team_token": "foo"}' ;;
-        b) curl -s localhost:8080/api -d '{"team_token": "bar"}' ;;
+        1) curl -s localhost:8080/api -d '{"team_token": "foo"}' ;;
+        2) curl -s localhost:8080/api -d '{"team_token": "bar"}' ;;
+        3) curl -s localhost:8080/api -d '{"team_token": "baz"}' ;;
         *) echo "Invalid choice"; echo
     esac
 

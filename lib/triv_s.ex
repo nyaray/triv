@@ -16,7 +16,14 @@ defmodule TrivServer do
 
   # callbacks
 
-  def init(_args), do: {:ok, %{current_team: nil, question: nil}}
+  def init(_args) do
+    # TODO: introduce a (serializable!) struct for the game state
+    {:ok, %{
+      current_team: nil,
+      duds: new_duds(),
+      question: nil
+    }}
+  end
 
   def handle_call(c = {:question, _question}, _from, state) do
     handle_question(c, state)
@@ -24,12 +31,12 @@ defmodule TrivServer do
 
   def handle_call(c = {:buzz, _team_token}, _from, state), do: handle_buzz(c, state)
   def handle_call(:clear, _from, state), do: handle_clear(state)
-  def handle_call(:join, from, state), do: handle_join(from, state)
+  def handle_call(:join, {from, _ref}, state), do: handle_join(from, state)
   def handle_call(_, _from, state), do: {:reply, {:error, :bad_call}, state}
 
   # internals
 
-  defp handle_question(call = {:question, q}, state) do
+  defp handle_question(call = {:question, q}, _state) do
     %{
       "question" => question,
       "correct_answer" => correct_answer,
@@ -44,7 +51,9 @@ defmodule TrivServer do
     ])
 
     dispatch(call)
-    {:reply, :ok, %{state | question: q}}
+    dispatch(:clear)
+
+    {:reply, :ok, %{current_team: :nil, duds: new_duds(), question: q}}
   end
 
   defp handle_buzz(c = {:buzz, team_token}, state = %{current_team: nil}) do
@@ -54,9 +63,19 @@ defmodule TrivServer do
   end
 
   defp handle_buzz({:buzz, team_token}, state) do
-    Logger.info(
-      "Rejecting: #{inspect(team_token)}, " <> "buzzer is: #{inspect(state.current_team)}"
-    )
+    Logger.info([
+      "Rejecting: #{inspect(team_token)}, ",
+      "buzzer is: #{inspect(state.current_team)}"
+    ])
+
+    state =
+      if :queue.member(team_token, state.duds) or team_token == state.current_team do
+        state
+      else
+        duds = add_dud(state.duds, team_token)
+        dispatch({:duds, duds |> share_duds()})
+        %{state | duds: duds}
+      end
 
     {:reply, :rejected, state}
   end
@@ -64,12 +83,25 @@ defmodule TrivServer do
   defp handle_clear(state) do
     Logger.info("Clearing buzzer, was: #{inspect(state.current_team)}")
     dispatch(:clear)
-    {:reply, :ok, %{state | current_team: nil}}
+    {:reply, :ok, %{state | current_team: nil, duds: new_duds()}}
   end
 
   defp handle_join(from, state) do
     Logger.info("Join from #{inspect(from)}")
-    {:reply, {:ok, {state.question, state.current_team}}, state}
+    duds = share_duds(state.duds)
+    {:reply, {:ok, {state.question, state.current_team, duds}}, state}
+  end
+
+  defp new_duds() do
+    :queue.new()
+  end
+
+  defp add_dud(duds, dud) do
+    :queue.in(dud, duds)
+  end
+
+  defp share_duds(duds) do
+    :queue.to_list(duds)
   end
 
   defp dispatch(call) do
