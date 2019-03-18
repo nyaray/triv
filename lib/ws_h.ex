@@ -59,10 +59,10 @@ defmodule TrivWsHandler do
 
   defp first_frames({question, current_team, duds}) do
     List.flatten([
-      if question == nil, do: [], else: [frame_question(question)],
-      if current_team == nil, do: [], else: [frame_buzz(current_team)],
-      if duds == [], do: [], else: [frame_duds(duds)]
-    ]
+      if(question == nil, do: [], else: [frame_question(question)]),
+      if(current_team == nil, do: [], else: [frame_buzz(current_team)]),
+      if(duds == [], do: [], else: [frame_duds(duds)])
+    ])
   end
 
   defp frame_question(q) do
