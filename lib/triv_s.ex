@@ -60,13 +60,20 @@ defmodule TrivServer do
   end
 
   defp handle_buzz(peer, c, state = %{current_peers: current_peers}) do
-    if peer in current_peers do
-      Logger.info("Peer rejected for re-buzzing: #{inspect {peer, c}}")
-      {:reply, :rejected, state}
-    else
-      new_state = %{state | current_peers: MapSet.put(current_peers, peer)}
-      do_handle_buzz(c, new_state)
+    case check_buzz_peer(peer, state) do
+      :cont ->
+        new_state = %{state | current_peers: MapSet.put(current_peers, peer)}
+        do_handle_buzz(c, new_state)
+      :halt ->
+        Logger.info("Peer rejected for re-buzzing: #{inspect {peer, c}}")
+        {:reply, :rejected, state}
     end
+  end
+
+  defp check_buzz_peer(peer, %{current_peers: current_peers}) do
+    is_local = peer === {127, 0, 0, 1}
+    is_fresh = peer not in current_peers
+    if is_local or is_fresh, do: :cont, else: :halt
   end
 
   defp do_handle_buzz(c = {:buzz, team_token}, state = %{current_team: nil}) do
