@@ -1,4 +1,6 @@
 defmodule TrivServer do
+  @gate_time_secs 5
+
   require Logger
 
   use GenServer
@@ -22,6 +24,8 @@ defmodule TrivServer do
       current_team: nil,
       current_peers: MapSet.new(),
       duds: new_duds(),
+      gating: false,
+      gating_timer: nil,
       question: nil
     }}
   end
@@ -39,7 +43,10 @@ defmodule TrivServer do
 
   # internals
 
-  defp handle_question(call = {:question, q}, _state) do
+  defp handle_question(call = {:question, q}, %{gating_timer: gating_timer}) do
+    cancel_gating_timer(gating_timer)
+    gating_timer = :timer.send_after(@gate_time_secs*1000, :gate_timer)
+
     %{
       "question" => question,
       "correct_answer" => correct_answer,
@@ -56,7 +63,21 @@ defmodule TrivServer do
     dispatch(call)
     dispatch(:clear)
 
-    {:reply, :ok, %{current_team: :nil, current_peers: MapSet.new(), duds: new_duds(), question: q}}
+    state = %{
+      current_team: :nil,
+      current_peers: MapSet.new(),
+      duds: new_duds(),
+      gating: true,
+      gating_timer: gating_timer,
+      question: q
+    }
+    {:reply, :ok, state}
+  end
+
+  # BUZZING
+
+  defp handle_buzz(_peer, _c, state = %{gating: true}) do
+    {:reply, :rejected, state}
   end
 
   defp handle_buzz(peer, c, state = %{current_peers: current_peers}) do
@@ -100,16 +121,38 @@ defmodule TrivServer do
     {:reply, :rejected, state}
   end
 
-  defp handle_clear(state) do
-    Logger.info("Clearing buzzer, was: #{inspect(state.current_team)}")
+  # CLEARING
+
+  defp handle_clear(state = %{gating_timer: gating_timer}) do
+    Logger.info("Clearing buzzers, winner was: #{inspect(state.current_team)}")
+
+    cancel_gating_timer(gating_timer)
     dispatch(:clear)
-    {:reply, :ok, %{state | current_team: nil, current_peers: MapSet.new(), duds: new_duds()}}
+
+    state = %{state |
+      current_team: nil,
+      current_peers: MapSet.new(),
+      duds: new_duds(),
+      gating: false,
+      gating_timer: nil
+    }
+    {:reply, :ok, state}
   end
+
+  # JOINING
 
   defp handle_join(from, state) do
     Logger.info("Join from #{inspect(from)}")
     duds = share_duds(state.duds)
     {:reply, {:ok, {state.question, state.current_team, duds}}, state}
+  end
+
+  # MISC INTERNALS
+
+  defp cancel_gating_timer(gating_timer) do
+    if gating_timer !== nil do
+      {:ok, :cancel} = :timer.cancel(gating_timer)
+    end
   end
 
   defp new_duds(), do: :queue.new()
