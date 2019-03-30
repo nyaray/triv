@@ -7,12 +7,13 @@
 (enable-console-print!)
 (println "Console ready")
 
-(def wsurl "ws://localhost:8080/ws/")
+(def wsurl "ws:///ws/")
 
 (defonce current-question (atom "..."))
 (defonce current-answer (atom "-"))
 (defonce current-team (atom nil))
 (defonce current-duds (atom []))
+(defonce gating (atom false))
 
 (defonce socket (atom nil))
 (defonce ping-timer (atom nil))
@@ -44,19 +45,25 @@
       (.parse js/JSON)
       (#(js->clj % :keywordize-keys true))))
 
+(def message-handlers {
+  "pong" #()
+  "question" #(if-not (= (:question %1) nil) (on-question (:question %1)))
+  "buzz" #(reset! current-team (:team %1))
+  "duds" #(reset! current-duds (:duds %1))
+  "clear" #(do (reset! current-team nil)
+               (reset! current-duds []))
+  "gating_started" #(do (.log js/console "Gate closed")
+                        (reset! gating true))
+  "gating_stopped" #(do (.log js/console "Gate opened")
+                        (reset! gating false))
+  })
+
 (defn on-message [e]
   (let*
     [data (parse-message-data e)
      e-type (:type data)]
-    ;(if-not (= e-type "pong") (prn "data" data))
-    (cond
-     (= e-type "pong") nil ; no-op
-     (= e-type "question") (if-not (= (:question data) nil) (on-question (:question data)))
-     (= e-type "buzz") (reset! current-team (:team data))
-     (= e-type "duds") (reset! current-duds (:duds data))
-     (= e-type "clear") (do (reset! current-team nil)
-                            (reset! current-duds []))
-     :else (.log  js/console "unexpected type:" e-type))))
+    ;(if-not (= e-type "pong") (prn "data" data)) ; debug all but pongs
+    ((e-type message-handlers (.log  js/console "unexpected type:" e-type)))))
 
 (defn on-open [e]
   (do
@@ -86,7 +93,9 @@
   [:div.center
    [:h3.question-marker "Q: " [:span.question @current-question]]
    [:h3.question-marker "A: " [:span.question @current-answer]]
-   (if-not (= @current-team nil) [:h1 [:em "First: "] @current-team])
+   (if (= @current-team nil)
+     [:h1.gate [:em (if @gating [:span.wait "WAIT"] [:span.press "PRESS"])]]
+     [:h1 [:em "First: "] @current-team])
    (if-not (= @current-duds [])
      [:h1 (comment "Duds: ") (map-indexed (fn [i d] [:div {:key i} d]) @current-duds)])])
 

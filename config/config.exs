@@ -21,7 +21,7 @@ use Mix.Config
 #     config :logger, level: :info
 #
 config :triv,
-  static_root: "app/resources/public/"
+  static_root: "static/"
 
 config :logger,
        :console,
