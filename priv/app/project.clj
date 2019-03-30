@@ -32,12 +32,15 @@
                            ;; in the default browser once Figwheel has
                            ;; started and compiled your application.
                            ;; Comment this out once it no longer serves you.
-                           :open-urls ["http://localhost:3449/index.html"]}
+                           ;:open-urls ["http://localhost:3449/index.html"]
+                           }
 
                 :compiler {:main app.core
                            :asset-path "js/compiled/out"
-                           :output-to "resources/public/js/compiled/app.js"
-                           :output-dir "resources/public/js/compiled/out"
+                           ;:output-to "resources/public/js/compiled/app.js"
+                           ;:output-to "resources/public/js/app.js"
+                           :output-to "../static/js/app.js"
+                           :output-dir "../static/js/compiled/out"
                            :source-map-timestamp true
                            ;; To console.log CLJS data-structures make sure you enable devtools in Chrome
                            ;; https://github.com/binaryage/cljs-devtools
@@ -47,7 +50,8 @@
                ;; lein cljsbuild once min
                {:id "min"
                 :source-paths ["src"]
-                :compiler {:output-to "resources/public/js/compiled/app.js"
+                :compiler {;:output-to "resources/public/js/compiled/app.js"
+                           :output-to "../static/js/app.min.js"
                            :main app.core
                            :optimizations :advanced
                            :pretty-print false}}]}

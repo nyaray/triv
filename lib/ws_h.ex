@@ -46,6 +46,16 @@ defmodule TrivWsHandler do
     |> reply(state)
   end
 
+  def websocket_info({:broadcast, :gating_started}, state) do
+    frame_gating_started()
+    |> reply(state)
+  end
+
+  def websocket_info({:broadcast, :gating_stopped}, state) do
+    frame_gating_stopped()
+    |> reply(state)
+  end
+
   def websocket_info(info, state) do
     Logger.info("Ignoring #{inspect(info)}")
     {:ok, state}
@@ -57,12 +67,25 @@ defmodule TrivWsHandler do
     {:reply, response, state}
   end
 
-  defp first_frames({question, current_team, duds}) do
-    List.flatten([
-      if(question == nil, do: [], else: [frame_question(question)]),
-      if(current_team == nil, do: [], else: [frame_buzz(current_team)]),
-      if(duds == [], do: [], else: [frame_duds(duds)])
-    ])
+  defp first_frames(frames, acc \\ [])
+
+  defp first_frames([], acc), do: Enum.reverse(acc)
+  defp first_frames([f | fs], acc) do
+    frame =
+      case f do
+        {_, nil} -> :skip
+        {_, []} -> :skip
+        {:question, question} -> frame_question(question)
+        {:gating, true} -> frame_gating_started()
+        {:gating, false} -> frame_gating_stopped()
+        {:current_team, current_team} -> frame_buzz(current_team)
+        {:duds, duds} -> frame_duds(duds)
+      end
+
+    case frame do
+      :skip -> first_frames(fs, acc)
+      f -> first_frames(fs, [f | acc])
+    end
   end
 
   defp frame_question(q) do
@@ -78,4 +101,7 @@ defmodule TrivWsHandler do
   end
 
   defp frame_clear(), do: {:text, Poison.encode!(%{type: :clear})}
+
+  defp frame_gating_started(), do: {:text, Poison.encode!(%{type: :gating_started})}
+  defp frame_gating_stopped(), do: {:text, Poison.encode!(%{type: :gating_stopped})}
 end
