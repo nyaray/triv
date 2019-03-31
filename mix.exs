@@ -6,6 +6,7 @@ defmodule Triv.MixProject do
       app: :triv,
       version: "0.1.0",
       elixir: "~> 1.7",
+      elixirc_options: [warnings_as_errors: true],
       start_permanent: Mix.env() == :prod,
       deps: deps()
     ]
@@ -22,6 +23,7 @@ defmodule Triv.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      {:credo, "~> 1.0.0", only: [:dev, :test], runtime: false},
       {:cowboy, "~> 2.5"},
       {:poison, "~> 4.0"}
     ]
