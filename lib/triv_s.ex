@@ -6,10 +6,63 @@ defmodule TrivServer do
 
   alias TrivServer.State
 
+  # STATE
+  defmodule State do
+    defstruct current_team: nil,
+              current_peers: MapSet.new(),
+              duds: :queue.new(),
+              gating: false,
+              gating_timer: nil,
+              gating_timer_ref: nil,
+              question: nil
+
+    def new(), do: %State{}
+
+    def new_duds(), do: :queue.new()
+
+    def new_round(question, gating_timer, gating_timer_ref) do
+      %State{
+        question: question,
+        gating_timer: gating_timer,
+        gating: true,
+        gating_timer_ref: gating_timer_ref
+      }
+    end
+
+    def stop_gating(state = %State{}),
+      do: %State{
+        state
+        | gating: false,
+          gating_timer: nil,
+          gating_timer_ref: nil
+      }
+
+    def current_team(state = %State{}, team_token) do
+      %State{state | current_team: team_token}
+    end
+
+    def add_dud(state = %State{current_team: current_team}, current_team),
+      do: {false, state}
+
+    def add_dud(state = %State{duds: duds}, dud) do
+      if :queue.member(dud, duds) do
+        {false, state}
+      else
+        duds = :queue.in(dud, duds)
+        {true, %State{state | duds: duds}}
+      end
+    end
+
+    def share_duds(%State{duds: duds}), do: :queue.to_list(duds)
+  end
+
   # api
 
   def update_question(q), do: GenServer.call(__MODULE__, {:question, q})
-  def buzz(peer, team_token), do: GenServer.call(__MODULE__, {:buzz, {peer, team_token}})
+
+  def buzz(peer, team_token),
+    do: GenServer.call(__MODULE__, {:buzz, {peer, team_token}})
+
   def clear_buzz(), do: GenServer.call(__MODULE__, :clear)
   def join(), do: GenServer.call(__MODULE__, :join)
 
@@ -35,7 +88,7 @@ defmodule TrivServer do
   def handle_call(:join, {from, _ref}, state), do: handle_join(from, state)
   def handle_call(_, _from, state), do: {:reply, {:error, :bad_call}, state}
 
-  def handle_info(:gating_timeout, state = %{gating: true}) do
+  def handle_info(:gating_timeout, state = %State{gating: true}) do
     Logger.debug(fn -> "Gate timed out, accepting buzzes" end)
     dispatch(:gating_stopped)
     {:noreply, State.stop_gating(state)}
@@ -50,7 +103,11 @@ defmodule TrivServer do
 
   defp handle_question(call = {:question, q}, state) do
     cancel_gating_timer(state)
-    {:ok, gating_timer} = :timer.send_after(@gate_time_secs * 1000, :gating_timeout)
+
+    timeout_ref = make_ref()
+
+    {:ok, gating_timer} =
+      :timer.send_after(@gate_time_secs * 1000, {:gating_timeout, timeout_ref})
 
     %{
       "question" => question,
@@ -69,23 +126,27 @@ defmodule TrivServer do
     dispatch(:clear)
     dispatch(:gating_started)
 
-    state = State.new_question(q, gating_timer)
+    state = State.new_round(q, gating_timer, timeout_ref)
 
     {:reply, :ok, state}
   end
 
   # BUZZING
 
-  defp handle_buzz(_peer, _c, state = %{gating: true}) do
+  defp handle_buzz(_peer, _c, state = %State{gating: true}) do
     # TODO: figure out cooldown'ing of peers who buzz during gating
     # TODO: unify cooldown checker and check_buzz_peer
     {:reply, :rejected, state}
   end
 
-  defp handle_buzz(peer, c, state = %{current_peers: current_peers}) do
+  defp handle_buzz(peer, c, state = %State{current_peers: current_peers}) do
     case check_buzz_peer(peer, state) do
       :cont ->
-        new_state = %{state | current_peers: MapSet.put(current_peers, peer)}
+        new_state = %State{
+          state
+          | current_peers: MapSet.put(current_peers, peer)
+        }
+
         do_handle_buzz(c, new_state)
 
       :halt ->
@@ -94,16 +155,19 @@ defmodule TrivServer do
     end
   end
 
-  defp check_buzz_peer(peer, %{current_peers: current_peers}) do
+  defp check_buzz_peer(peer, %State{current_peers: current_peers}) do
     is_local = peer === {127, 0, 0, 1}
     is_fresh = peer not in current_peers
     if is_local or is_fresh, do: :cont, else: :halt
   end
 
-  defp do_handle_buzz(c = {:buzz, team_token}, state = %{current_team: nil}) do
+  defp do_handle_buzz(
+         c = {:buzz, team_token},
+         state = %State{current_team: nil}
+       ) do
     Logger.info("Accepting: #{inspect(team_token)}")
     dispatch(c)
-    {:reply, :accepted, %{state | current_team: team_token}}
+    {:reply, :accepted, State.current_team(state, team_token)}
   end
 
   defp do_handle_buzz({:buzz, team_token}, state) do
@@ -146,52 +210,26 @@ defmodule TrivServer do
 
   # MISC INTERNALS
 
-  defp cancel_gating_timer(state) do
-    gating_timer = State.gating_timer(state)
+  defp cancel_gating_timer(%State{gating_timer: nil}), do: :ok
 
-    if gating_timer !== nil do
-      Logger.debug(fn -> ["Attempting to cancel: ", inspect(gating_timer)] end)
-      {:ok, :cancel} = :timer.cancel(gating_timer)
-    end
+  defp cancel_gating_timer(%State{gating_timer: gating_timer}) do
+    result = :timer.cancel(gating_timer)
+
+    Logger.debug(fn ->
+      [
+        "Attempted to cancel timer ",
+        inspect(gating_timer),
+        " got: ",
+        inspect(result)
+      ]
+    end)
+
+    result
   end
 
   defp dispatch(call) do
     Registry.dispatch(TrivPubSub, "trivia", fn entries ->
       for {pid, _} <- entries, do: send(pid, {:broadcast, call})
     end)
-  end
-
-  # STATE
-  defmodule State do
-    defstruct current_team: nil,
-              current_peers: MapSet.new(),
-              duds: :queue.new(),
-              gating: false,
-              gating_timer: nil,
-              question: nil
-
-    def new(), do: %State{}
-
-    def new_duds(), do: :queue.new()
-
-    def new_question(question, gating_timer) do
-      %State{question: question, gating_timer: gating_timer, gating: true}
-    end
-
-    def stop_gating(state = %State{}), do: %State{state | gating: false, gating_timer: nil}
-    def gating_timer(%State{gating_timer: gating_timer}), do: gating_timer
-
-    def add_dud(state = %State{current_team: current_team}, current_team), do: {false, state}
-
-    def add_dud(state = %State{duds: duds}, dud) do
-      if :queue.member(dud, duds) do
-        {false, state}
-      else
-        duds = :queue.in(dud, duds)
-        {true, %State{state | duds: duds}}
-      end
-    end
-
-    def share_duds(%State{duds: duds}), do: :queue.to_list(duds)
   end
 end
