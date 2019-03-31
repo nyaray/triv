@@ -20,7 +20,6 @@ defmodule TrivServer do
   # callbacks
 
   def init(_args) do
-    # TODO: introduce a (serializable!) struct for the game state
     {:ok, State.new()}
   end
 
@@ -38,9 +37,8 @@ defmodule TrivServer do
 
   def handle_info(:gating_timeout, state = %{gating: true}) do
     Logger.debug(fn -> "Gate timed out, accepting buzzes" end)
-
     dispatch(:gating_stopped)
-    {:noreply, %{state | gating: false, gating_timer: nil}}
+    {:noreply, State.stop_gating(state)}
   end
 
   def handle_info(msg, state) do
@@ -50,8 +48,8 @@ defmodule TrivServer do
 
   # internals
 
-  defp handle_question(call = {:question, q}, %{gating_timer: gating_timer}) do
-    cancel_gating_timer(gating_timer)
+  defp handle_question(call = {:question, q}, state) do
+    cancel_gating_timer(state)
     {:ok, gating_timer} = :timer.send_after(@gate_time_secs * 1000, :gating_timeout)
 
     %{
@@ -122,7 +120,7 @@ defmodule TrivServer do
 
   # CLEARING
 
-  defp handle_clear(state = %{gating_timer: gating_timer}) do
+  defp handle_clear(state = %State{gating_timer: gating_timer}) do
     Logger.info("Clearing buzzers, winner was: #{inspect(state.current_team)}")
 
     cancel_gating_timer(gating_timer)
@@ -148,7 +146,9 @@ defmodule TrivServer do
 
   # MISC INTERNALS
 
-  defp cancel_gating_timer(gating_timer) do
+  defp cancel_gating_timer(state) do
+    gating_timer = State.gating_timer(state)
+
     if gating_timer !== nil do
       Logger.debug(fn -> ["Attempting to cancel: ", inspect(gating_timer)] end)
       {:ok, :cancel} = :timer.cancel(gating_timer)
@@ -177,6 +177,9 @@ defmodule TrivServer do
     def new_question(question, gating_timer) do
       %State{question: question, gating_timer: gating_timer, gating: true}
     end
+
+    def stop_gating(state = %State{}), do: %State{state | gating: false, gating_timer: nil}
+    def gating_timer(%State{gating_timer: gating_timer}), do: gating_timer
 
     def add_dud(state = %State{current_team: current_team}, current_team), do: {false, state}
 
