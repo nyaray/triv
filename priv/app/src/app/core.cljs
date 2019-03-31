@@ -7,7 +7,7 @@
 (enable-console-print!)
 (println "Console ready")
 
-(def wsurl "ws:///ws/")
+(def wsurl (str "ws://" js/window.location.host "/ws/"))
 
 (defonce current-question (atom "..."))
 (defonce current-answer (atom "-"))
@@ -47,10 +47,15 @@
 
 (def message-handlers {
   "pong" #()
-  "question" #(if-not (= (:question %1) nil) (on-question (:question %1)))
-  "buzz" #(reset! current-team (:team %1))
-  "duds" #(reset! current-duds (:duds %1))
-  "clear" #(do (reset! current-team nil)
+  "question" #(if-not (= (:question %1) nil)
+                      (do (.log js/console "Updating question")
+                          (on-question (:question %1))))
+  "buzz" #(do (.log js/console "Updating current team")
+              (reset! current-team (:team %1)))
+  "duds" #(do (.log js/console "Updating duds")
+              (reset! current-duds (:duds %1)))
+  "clear" #(do (.log js/console "Clearing team and duds")
+               (reset! current-team nil)
                (reset! current-duds []))
   "gating_started" #(do (.log js/console "Gate closed")
                         (reset! gating true))
@@ -63,7 +68,7 @@
     [data (parse-message-data e)
      e-type (:type data)]
     ;(if-not (= e-type "pong") (prn "data" data)) ; debug all but pongs
-    ((e-type message-handlers (.log  js/console "unexpected type:" e-type)))))
+    ((message-handlers e-type #(.log js/console "unexpected type:" e-type)) data)))
 
 (defn on-open [e]
   (do
