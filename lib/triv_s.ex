@@ -64,7 +64,11 @@ defmodule TrivServer do
     do: GenServer.call(__MODULE__, {:buzz, {peer, team_token}})
 
   def clear_buzz(), do: GenServer.call(__MODULE__, :clear)
-  def join(), do: GenServer.call(__MODULE__, :join)
+
+  def join() do
+    {:ok, _} = Registry.register(TrivPubSub, "trivia", nil)
+    GenServer.call(__MODULE__, :join)
+  end
 
   def start_link() do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
@@ -88,10 +92,25 @@ defmodule TrivServer do
   def handle_call(:join, {from, _ref}, state), do: handle_join(from, state)
   def handle_call(_, _from, state), do: {:reply, {:error, :bad_call}, state}
 
-  def handle_info(:gating_timeout, state = %State{gating: true}) do
-    Logger.debug(fn -> "Gate timed out, accepting buzzes" end)
-    dispatch(:gating_stopped)
-    {:noreply, State.stop_gating(state)}
+  # TODO handle the new ref here
+  def handle_info(
+        {:gating_timeout, timeout_ref},
+        state = %State{gating: true, gating_timer_ref: timer_ref}
+      ) do
+    case timeout_ref do
+      ^timer_ref ->
+        Logger.debug(fn -> "Gate timed out, accepting buzzes" end)
+        dispatch(:gating_stopped)
+        {:noreply, State.stop_gating(state)}
+
+      _ ->
+        {:noreply, state}
+    end
+  end
+
+  def handle_info({:gating_timeout, old_ref}, state = %State{gating: false}) do
+    Logger.debug(fn -> "Not gating, dropping timout for #{inspect(old_ref)}" end)
+    {:noreply, state}
   end
 
   def handle_info(msg, state) do
@@ -101,14 +120,7 @@ defmodule TrivServer do
 
   # internals
 
-  defp handle_question(call = {:question, q}, state) do
-    cancel_gating_timer(state)
-
-    timeout_ref = make_ref()
-
-    {:ok, gating_timer} =
-      :timer.send_after(@gate_time_secs * 1000, {:gating_timeout, timeout_ref})
-
+  defp handle_question(call = {:question, q}, _state) do
     %{
       "question" => question,
       "correct_answer" => correct_answer,
@@ -126,6 +138,8 @@ defmodule TrivServer do
     dispatch(:clear)
     dispatch(:gating_started)
 
+    timeout_ref = make_ref()
+    {:ok, gating_timer} = :timer.send_after(@gate_time_secs * 1000, {:gating_timeout, timeout_ref})
     state = State.new_round(q, gating_timer, timeout_ref)
 
     {:reply, :ok, state}
@@ -184,13 +198,13 @@ defmodule TrivServer do
 
   # CLEARING
 
-  defp handle_clear(state = %State{gating_timer: gating_timer}) do
+  defp handle_clear(state = %State{question: question}) do
     Logger.info("Clearing buzzers, winner was: #{inspect(state.current_team)}")
 
-    cancel_gating_timer(gating_timer)
     dispatch(:clear)
 
-    {:reply, :ok, State.new()}
+    state = %State{State.new() | question: question}
+    {:reply, :ok, state}
   end
 
   # JOINING
@@ -209,23 +223,6 @@ defmodule TrivServer do
   end
 
   # MISC INTERNALS
-
-  defp cancel_gating_timer(%State{gating_timer: nil}), do: :ok
-
-  defp cancel_gating_timer(%State{gating_timer: gating_timer}) do
-    result = :timer.cancel(gating_timer)
-
-    Logger.debug(fn ->
-      [
-        "Attempted to cancel timer ",
-        inspect(gating_timer),
-        " got: ",
-        inspect(result)
-      ]
-    end)
-
-    result
-  end
 
   defp dispatch(call) do
     Registry.dispatch(TrivPubSub, "trivia", fn entries ->

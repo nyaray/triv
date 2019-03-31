@@ -4,14 +4,16 @@ defmodule TrivWsHandler do
   # cowboy
 
   def init(req, opts) do
+    # Logger.debug(fn -> "Initialising websocket ..." end)
     {:cowboy_websocket, req, nil, opts}
   end
 
   # cowboy_websocket
 
   def websocket_init(state) do
-    {:ok, _} = Registry.register(TrivPubSub, "trivia", nil)
+    # Logger.debug(fn -> "Registering for trivia events..." end)
     {:ok, join_state} = TrivServer.join()
+    # Logger.debug(fn -> "Sending first frames" end)
     {:reply, first_frames(join_state), state}
   end
 
@@ -70,6 +72,7 @@ defmodule TrivWsHandler do
   defp first_frames(frames, acc \\ [])
 
   defp first_frames([], acc), do: Enum.reverse(acc)
+
   defp first_frames([f | fs], acc) do
     frame =
       case f do
