@@ -29,7 +29,7 @@ defmodule TrivServer do
       }
     end
 
-    def stop_gating(state = %State{}),
+    def stop_gating(state),
       do: %State{
         state
         | gating: false,
@@ -37,23 +37,25 @@ defmodule TrivServer do
           gating_timer_ref: nil
       }
 
-    def current_team(state = %State{}, team_token) do
+    def current_team(state, team_token) do
       %State{state | current_team: team_token}
     end
 
-    def add_dud(state = %State{current_team: current_team}, current_team),
-      do: {false, state}
-
     def add_dud(state = %State{duds: duds}, dud) do
-      if :queue.member(dud, duds) do
-        {false, state}
-      else
-        duds = :queue.in(dud, duds)
-        {true, %State{state | duds: duds}}
+      cond do
+        state.current_team === dud ->
+          {false, state}
+
+        :queue.member(dud, duds) ->
+          {false, state}
+
+        true ->
+          duds = :queue.in(dud, duds)
+          {true, %State{state | duds: duds}}
       end
     end
 
-    def share_duds(%State{duds: duds}), do: :queue.to_list(duds)
+    def share_duds(state), do: :queue.to_list(state.duds)
   end
 
   # api
@@ -70,9 +72,7 @@ defmodule TrivServer do
     GenServer.call(__MODULE__, :join)
   end
 
-  def start_link() do
-    GenServer.start_link(__MODULE__, [], name: __MODULE__)
-  end
+  def start_link(), do: GenServer.start_link(__MODULE__, [], name: __MODULE__)
 
   # callbacks
 
