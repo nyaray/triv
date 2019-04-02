@@ -18,8 +18,6 @@ defmodule TrivServer do
 
     def new(), do: %State{}
 
-    def new_duds(), do: :queue.new()
-
     def new_round(question, gating_timer, gating_timer_ref) do
       %State{
         question: question,
@@ -198,12 +196,12 @@ defmodule TrivServer do
 
   # CLEARING
 
-  defp handle_clear(state = %State{question: question}) do
+  defp handle_clear(state) do
     Logger.info("Clearing buzzers, winner was: #{inspect(state.current_team)}")
 
     dispatch(:clear)
 
-    state = %State{State.new() | question: question}
+    state = %State{State.new() | question: state.question}
     {:reply, :ok, state}
   end
 
@@ -212,14 +210,14 @@ defmodule TrivServer do
   defp handle_join(from, state) do
     Logger.info("Join from #{inspect(from)}")
 
-    init_frames = [
-      gating: state.gating,
-      current_team: state.current_team,
-      duds: State.share_duds(state),
-      question: state.question
-    ]
-
-    {:reply, {:ok, init_frames}, state}
+    {:reply,
+     {:ok,
+      [
+        gating: state.gating,
+        current_team: state.current_team,
+        duds: State.share_duds(state),
+        question: state.question
+      ]}, state}
   end
 
   # MISC INTERNALS
