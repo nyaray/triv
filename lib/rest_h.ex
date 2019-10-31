@@ -5,11 +5,10 @@ defmodule TrivRestHandler do
     {body, req} = parse_body(req)
     {peer, _port} = :cowboy_req.peer(req)
 
+    # TODO: Handle malformed bodies
     response = handle_body(peer, body)
     encoded_response = Poison.encode!(response)
-
     req = :cowboy_req.reply(200, %{"content-type" => "application/json"}, encoded_response, req)
-
     {:ok, req, state}
   end
 
